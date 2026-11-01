@@ -52,51 +52,34 @@ test('ツール・編集したファイル・手で変わったファイルを�
 })
 
 test('返事の JSON から助言を読む', async () => {
-  expect(readAdvice('{"comment": "どのファイルか書くと伝わりそうです", "questions": ["どの案にする?"]}')).toEqual({
-    comment: 'どのファイルか書くと伝わりそうです',
-    opinion: '',
+  expect(readAdvice('{"advice": "どのファイルか伝えるとよさそうです", "questions": ["どの案にする?"]}')).toEqual({
+    advice: 'どのファイルか伝えるとよさそうです',
     questions: ['どの案にする?'],
   })
   // ```json で囲まれていても読む
-  expect(readAdvice('```json\n{"comment": "いい頼み方ですね", "questions": []}\n```')).toEqual({
-    comment: 'いい頼み方ですね',
-    opinion: '',
+  expect(readAdvice('```json\n{"advice": "読んだか確かめるよう頼むとよさそうです", "questions": []}\n```')).toEqual({
+    advice: '読んだか確かめるよう頼むとよさそうです',
     questions: [],
   })
-  // ずれが無ければ comment は空でよい。questions が無ければ空、文字列でない・空の問いは捨てる
-  expect(readAdvice('{"comment": ""}')).toEqual({ comment: '', opinion: '', questions: [] })
-  expect(readAdvice('{"comment": " ", "questions": ["A?", 1, " ", " B? "]}')).toEqual({
-    comment: '',
-    opinion: '',
+  // 言うことが無ければ advice は空でよい。questions が無ければ空、文字列でない・空の問いは捨てる
+  expect(readAdvice('{"advice": ""}')).toEqual({ advice: '', questions: [] })
+  expect(readAdvice('{"advice": " ", "questions": ["A?", 1, " ", " B? "]}')).toEqual({
+    advice: '',
     questions: ['A?', 'B?'],
   })
 })
 
-test('意見を読む。無い・文字列でないなら空にする', async () => {
-  expect(readAdvice('{"comment": "", "opinion": " 先に原因を絞ると早そうです ", "questions": []}')).toEqual({
-    comment: '',
-    opinion: '先に原因を絞ると早そうです',
-    questions: [],
-  })
-  expect(readAdvice('{"comment": "あ"}')?.opinion).toBe('')
-  expect(readAdvice('{"comment": "あ", "opinion": 1}')?.opinion).toBe('')
-})
-
-test('ステータスラインの1行:ずれの一言と意見をつなぐ。両方空なら出さない', async () => {
-  expect(buildStatus({ comment: '答えきれていないかも', opinion: '案Bの方が単純です', questions: [] })).toBe(
-    'monju: 答えきれていないかも / 案Bの方が単純です',
-  )
-  expect(buildStatus({ comment: '答えきれていないかも', opinion: '', questions: [] })).toBe('monju: 答えきれていないかも')
-  expect(buildStatus({ comment: '', opinion: '案Bの方が単純です', questions: [] })).toBe('monju: 案Bの方が単純です')
-  expect(buildStatus({ comment: '', opinion: '', questions: [] })).toBe(undefined)
+test('ステータスラインの1行:一言があれば monju: <一言>。空なら出さない', async () => {
+  expect(buildStatus({ advice: 'どのファイルか伝えるとよさそうです', questions: [] })).toBe('monju: どのファイルか伝えるとよさそうです')
+  expect(buildStatus({ advice: '', questions: [] })).toBe(undefined)
 })
 
 test('壊れた返事は読まない(= 何も出さない)', async () => {
   expect(readAdvice('')).toBe(undefined)
-  expect(readAdvice('comment')).toBe(undefined)
-  expect(readAdvice('{"comment": "あ", "questions": [')).toBe(undefined)
+  expect(readAdvice('advice')).toBe(undefined)
+  expect(readAdvice('{"advice": "あ", "questions": [')).toBe(undefined)
   expect(readAdvice('{"questions": []}')).toBe(undefined)
-  expect(readAdvice('{"comment": 1}')).toBe(undefined)
+  expect(readAdvice('{"advice": 1}')).toBe(undefined)
   expect(readAdvice('null')).toBe(undefined)
 })
 

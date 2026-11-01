@@ -39,7 +39,7 @@ async function changedByHand($: EngineInterface): Promise<string[]> {
   return changed
 }
 
-// 裏で Haiku に聞き、一言と意見をステータスラインに、問いを答える枠にして出す(D-005・D-006・D-007・C-7・D-023)
+// 裏で Haiku に聞き、一言をステータスラインに、問いを答える枠にして出す(D-005・D-007・C-7・D-023・D-026)
 async function advise($: EngineInterface, material: Material): Promise<void> {
   const sent = submits
   const r = await $.model.complete({
@@ -52,7 +52,7 @@ async function advise($: EngineInterface, material: Material): Promise<void> {
   // 間に合わない・読めないときは何も出さない(今回決めたこと4)
   const advice = r.isAnswered ? readAdvice(r.text) : undefined
   if (!advice) return
-  // 一言も意見も空なら、前の一言を残す(D-005・D-026)
+  // 一言が空なら、前の一言を残す(D-005・D-026)
   const line = buildStatus(advice)
   if (line) $.ui.status(line)
   // 次の発言がもう送られていたら、枠は入れない(今回決めたこと7)

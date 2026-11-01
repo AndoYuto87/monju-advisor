@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
-const ADVICE = '{"comment": "どのファイルか書くと伝わりそうです", "questions": []}'
+const ADVICE = '{"advice": "どのファイルか伝えるとよさそうです", "questions": []}'
 
 let status: string | undefined
 let asked: string[] = [] // Haiku に渡した本文
@@ -169,7 +169,7 @@ test('回答が終わると、覚えた材料を Haiku に渡し、一言をス�
   expect(prompt.includes('/x/sub.ts')).toBe(false)
   expect(prompt.includes('前の回答')).toBe(false)
   expect(prompt.includes('手で変わった')).toBe(false)
-  expect(status).toBe('monju: どのファイルか書くと伝わりそうです')
+  expect(status).toBe('monju: どのファイルか伝えるとよさそうです')
   expect(maxTokens).toEqual([800])
 })
 
@@ -197,31 +197,28 @@ test('次のターンには、前の回答・往復の数・手で変わった�
   expect(asked[2].includes('手で変わった')).toBe(false)
 })
 
-test('ずれの一言と意見を1行で出す。ずれが無くても意見は出す', async ($, on) => {
+test('返し方を monju: <一言> の1行で出す', async ($, on) => {
   const clock = engine(on)
   await start($)
-  reply = '{"comment": "答えきれていないかも", "opinion": "案Bの方が単純です", "questions": []}'
+  reply = '{"advice": "読んだか確かめるよう頼むとよさそうです", "questions": []}'
   await turn($, clock, '直して', 'はい')
-  expect(status).toBe('monju: 答えきれていないかも / 案Bの方が単純です')
-  reply = '{"comment": "", "opinion": "先に原因を絞ると早そうです", "questions": []}'
-  await turn($, clock, '次', 'はい')
-  expect(status).toBe('monju: 先に原因を絞ると早そうです')
+  expect(status).toBe('monju: 読んだか確かめるよう頼むとよさそうです')
 })
 
-test('一言も意見も空なら、前の一言を残す', async ($, on) => {
+test('advice が空なら、前の一言を残す', async ($, on) => {
   const clock = engine(on)
   await start($)
   await turn($, clock, '直して', 'はい')
-  reply = '{"comment": "", "opinion": "", "questions": []}'
+  reply = '{"advice": "", "questions": []}'
   await turn($, clock, '次', 'はい')
   expect(asked.length).toBe(2)
-  expect(status).toBe('monju: どのファイルか書くと伝わりそうです')
+  expect(status).toBe('monju: どのファイルか伝えるとよさそうです')
 })
 
 test('問いがあれば、入力欄に答える枠を足す。打ちかけの文は残す', async ($, on) => {
   const clock = engine(on)
   await start($)
-  reply = '{"comment": "", "questions": ["何が食べたい?", "がっつり派?軽め派?"]}'
+  reply = '{"advice": "", "questions": ["何が食べたい?", "がっつり派?軽め派?"]}'
   await turn($, clock, '相談', 'どうしますか?')
   expect(filled).toEqual([{ text: '1. 何が食べたい?:\n2. がっつり派?軽め派?:', mode: 'append' }])
   draft = 'あいう'
@@ -232,7 +229,7 @@ test('問いがあれば、入力欄に答える枠を足す。打ちかけの�
 test('返事より先に次の発言が送られていたら、一言は出すが、枠は入れない', async ($, on) => {
   const clock = engine(on)
   await start($)
-  reply = '{"comment": "答えきれていないかも", "questions": ["どれにする?"]}'
+  reply = '{"advice": "どれにするか答えるとよさそうです", "questions": ["どれにする?"]}'
   delayMs = 3000
   await submit($, '相談')
   await begin($, '相談')
@@ -240,14 +237,14 @@ test('返事より先に次の発言が送られていたら、一言は出す�
   await clock.settle()
   await submit($, 'A で')
   await clock.advance(3000)
-  expect(status).toBe('monju: 答えきれていないかも')
+  expect(status).toBe('monju: どれにするか答えるとよさそうです')
   expect(filled).toEqual([])
 })
 
 test('Haiku が間に合わない・返事が読めないときは、何も出さない', async ($, on) => {
   const clock = engine(on)
   await start($)
-  for (const r of [undefined, 'comment', '{"questions": ["どれ?"]}']) {
+  for (const r of [undefined, 'advice', '{"questions": ["どれ?"]}']) {
     reply = r
     await turn($, clock, '直して', 'はい')
   }
