@@ -1,0 +1,6 @@
+{
+  "name": "monju-advisor",
+  "description": "monju-advisor を配るマーケットプレイス",
+  "owner": { "name": "AndoYuto87" },
+  "plugins": [{ "name": "monju-advisor", "source": "./monju-advisor" }]
+}
