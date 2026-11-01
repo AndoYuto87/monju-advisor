@@ -5,8 +5,8 @@ export const TEXT_LIMIT = 1000 // 今回の発言の先頭
 export const ANSWER_LIMIT = 800 // 今回の回答の末尾
 export const PREVIOUS_LIMIT = 400 // 前の回答の末尾
 
-// 判定の基準(D-003・D-006・D-010・D-011・C-6)。Haiku の system に渡す
-export const RULES = `あなたは、人とコーディング支援の AI(Claude)のやり取りを横から見る第三者です。人の補助として、ずれに気づいたら一言だけ助言します。
+// 判定の基準(D-003・D-006・D-010・D-011・C-6・D-022・D-025)。Haiku の system に渡す
+export const RULES = `あなたは、人とコーディング支援の AI(Claude)のやり取りを横から見る第三者です。人の補助として、ずれに気づいたら一言だけ助言します。また毎ターン、Claude の回答について、自分ならどう思うか・どう答えるか・直した方がいい所を、参考の意見として述べます。
 
 見る観点:
 K-1 Claude の問いに人が答えきれていない / K-2 どれを指すか分からない答え / K-3 書かれていない前提 / K-4 方針を変えたのに前の方針での変更が残っている / K-5 人が手で変えたことを Claude が知らない / K-6 Claude が推測のまま進めた / K-7 Claude が解釈を示さずに曖昧な依頼を進めた / K-8 頼まれていない範囲まで変えた / K-9 人の質問を指示と受け取って変更した / K-10 Claude が黙って手段を変えた / K-11 人の否定が続く / K-12 同じ所の直しを繰り返している / K-13 会話が長く最初の決定が埋もれている / K-14 プランモードの方がいい作業を通常モードで頼んだ / K-15 一度に頼む量が多い / K-16 前の作業と関係ない話を始めた / K-17 人の発言にもっと伝わる書き方がある / K-18 人の書き方が良い
@@ -17,9 +17,10 @@ K-1 Claude の問いに人が答えきれていない / K-2 どれを指すか�
 - 別々の作業がいくつも並んだ発言なら、K-15 を優先する
 - K-14 は、今のモードが通常モードのときだけ見る
 - comment は友達のような距離感で、言葉づかいは丁寧に。必ず60字以内にする
+- opinion は必ず書く。120字以内。口調は comment と同じ
 - questions には、今回の回答の文の中で、人が答えないと Claude が先へ進めない問いだけを、短い要約で並べる。「ほかに作業はありますか?」のような軽い問いは入れない。無ければ空
 
-JSON だけを返す:{"comment": "一言", "questions": ["問いの要約"]}`
+JSON だけを返す:{"comment": "一言", "opinion": "意見", "questions": ["問いの要約"]}`
 
 // Haiku に渡す材料。フックで集める(D-004・D-008)
 export type Material = {
@@ -34,7 +35,8 @@ export type Material = {
 }
 
 export type Advice = {
-  comment: string // ステータスラインに出す一言。空なら出さない(D-006)
+  comment: string // ずれの一言。空ならずれ無し(D-006)
+  opinion: string // 回答への意見。空なら出さない(D-022)
   questions: string[] // 答える枠にする問いの要約(D-007)
 }
 
@@ -67,13 +69,20 @@ export function readAdvice(text: string): Advice | undefined {
     return undefined
   }
   if (typeof v !== 'object' || v === null) return undefined
-  const { comment, questions } = v as Record<string, unknown>
+  const { comment, opinion, questions } = v as Record<string, unknown>
   if (typeof comment !== 'string') return undefined
   // 文字列でない問い・空の問いは捨て、questions が無ければ空にする
   const known = Array.isArray(questions)
     ? questions.filter((q): q is string => typeof q === 'string' && q.trim() !== '').map(q => q.trim())
     : []
-  return { comment: comment.trim(), questions: known }
+  // opinion は無くても読めたことにする。意見が無くてもずれの一言は出したいため
+  return { comment: comment.trim(), opinion: typeof opinion === 'string' ? opinion.trim() : '', questions: known }
+}
+
+// ステータスラインに出す1行。ずれの一言と意見の空でないものをつなぐ。両方空なら undefined(= 前の一言を残す。D-005・D-026)
+export function buildStatus(advice: Advice): string | undefined {
+  const parts = [advice.comment, advice.opinion].filter(s => s !== '')
+  return parts.length > 0 ? `monju: ${parts.join(' / ')}` : undefined
 }
 
 // 入力欄に足す答える枠。打ちかけの文があれば、改行してから後ろに足す(D-007・C-2・C-7)

@@ -6,6 +6,7 @@ const ADVICE = '{"comment": "どのファイルか書くと伝わりそうです
 
 let status: string | undefined
 let asked: string[] = [] // Haiku に渡した本文
+let maxTokens: (number | undefined)[] = [] // Haiku に頼んだ返事の長さ
 let filled: { text: string; mode?: string }[] = []
 let reply: string | undefined // undefined なら Haiku が間に合わない
 let draft = '' // 入力欄の打ちかけ
@@ -15,6 +16,7 @@ let mtimes: Record<string, number> = {} // fs.stat が返す mtime。無いパ�
 function engine(on: Parameters<Parameters<typeof test>[1]>[1], store: Record<string, unknown> = {}) {
   status = undefined
   asked = []
+  maxTokens = []
   filled = []
   reply = ADVICE
   draft = ''
@@ -23,6 +25,7 @@ function engine(on: Parameters<Parameters<typeof test>[1]>[1], store: Record<str
   const clock = mock.clock(on, { now: 0 })
   on('model.complete', async (_, e) => {
     asked.push(e.prompt)
+    maxTokens.push(e.maxTokens)
     if (delayMs > 0) await clock.sleep(delayMs)
     return {
       value: reply === undefined
@@ -167,6 +170,7 @@ test('回答が終わると、覚えた材料を Haiku に渡し、一言をス�
   expect(prompt.includes('前の回答')).toBe(false)
   expect(prompt.includes('手で変わった')).toBe(false)
   expect(status).toBe('monju: どのファイルか書くと伝わりそうです')
+  expect(maxTokens).toEqual([800])
 })
 
 test('次のターンには、前の回答・往復の数・手で変わったファイルが入り、ツールの回数は空に戻る', async ($, on) => {
@@ -193,11 +197,22 @@ test('次のターンには、前の回答・往復の数・手で変わった�
   expect(asked[2].includes('手で変わった')).toBe(false)
 })
 
-test('comment が空なら、前の一言を残す', async ($, on) => {
+test('ずれの一言と意見を1行で出す。ずれが無くても意見は出す', async ($, on) => {
+  const clock = engine(on)
+  await start($)
+  reply = '{"comment": "答えきれていないかも", "opinion": "案Bの方が単純です", "questions": []}'
+  await turn($, clock, '直して', 'はい')
+  expect(status).toBe('monju: 答えきれていないかも / 案Bの方が単純です')
+  reply = '{"comment": "", "opinion": "先に原因を絞ると早そうです", "questions": []}'
+  await turn($, clock, '次', 'はい')
+  expect(status).toBe('monju: 先に原因を絞ると早そうです')
+})
+
+test('一言も意見も空なら、前の一言を残す', async ($, on) => {
   const clock = engine(on)
   await start($)
   await turn($, clock, '直して', 'はい')
-  reply = '{"comment": "", "questions": []}'
+  reply = '{"comment": "", "opinion": "", "questions": []}'
   await turn($, clock, '次', 'はい')
   expect(asked.length).toBe(2)
   expect(status).toBe('monju: どのファイルか書くと伝わりそうです')

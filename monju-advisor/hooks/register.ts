@@ -1,10 +1,10 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { buildFrames, buildPrompt, type Material, readAdvice, RULES } from './judge'
+import { buildFrames, buildPrompt, buildStatus, type Material, readAdvice, RULES } from './judge'
 
 const COMMAND = 'monju-advisor'
 
-// Haiku の返事の長さと、待つ長さ(今回決めたこと4)
-const MAX_TOKENS = 400
+// Haiku の返事の長さと、待つ長さ(今回決めたこと4・D-024)
+const MAX_TOKENS = 800
 const JUDGE_TIMEOUT_MS = 10000
 
 // 見ないターン:バックグラウンドの作業の完了通知(今回決めたこと6)
@@ -39,7 +39,7 @@ async function changedByHand($: EngineInterface): Promise<string[]> {
   return changed
 }
 
-// 裏で Haiku に聞き、一言をステータスラインに、問いを答える枠にして出す(D-005・D-006・D-007・C-7)
+// 裏で Haiku に聞き、一言と意見をステータスラインに、問いを答える枠にして出す(D-005・D-006・D-007・C-7・D-023)
 async function advise($: EngineInterface, material: Material): Promise<void> {
   const sent = submits
   const r = await $.model.complete({
@@ -52,8 +52,9 @@ async function advise($: EngineInterface, material: Material): Promise<void> {
   // 間に合わない・読めないときは何も出さない(今回決めたこと4)
   const advice = r.isAnswered ? readAdvice(r.text) : undefined
   if (!advice) return
-  // comment が空なら、前の一言を残す(D-005・D-006)
-  if (advice.comment) $.ui.status(`monju: ${advice.comment}`)
+  // 一言も意見も空なら、前の一言を残す(D-005・D-026)
+  const line = buildStatus(advice)
+  if (line) $.ui.status(line)
   // 次の発言がもう送られていたら、枠は入れない(今回決めたこと7)
   if (advice.questions.length === 0 || submits !== sent) return
   const box = await $.prompt.read()

@@ -3,6 +3,7 @@ import {
   ANSWER_LIMIT,
   buildFrames,
   buildPrompt,
+  buildStatus,
   type Material,
   PREVIOUS_LIMIT,
   readAdvice,
@@ -53,19 +54,41 @@ test('ツール・編集したファイル・手で変わったファイルを�
 test('返事の JSON から助言を読む', async () => {
   expect(readAdvice('{"comment": "どのファイルか書くと伝わりそうです", "questions": ["どの案にする?"]}')).toEqual({
     comment: 'どのファイルか書くと伝わりそうです',
+    opinion: '',
     questions: ['どの案にする?'],
   })
   // ```json で囲まれていても読む
   expect(readAdvice('```json\n{"comment": "いい頼み方ですね", "questions": []}\n```')).toEqual({
     comment: 'いい頼み方ですね',
+    opinion: '',
     questions: [],
   })
   // ずれが無ければ comment は空でよい。questions が無ければ空、文字列でない・空の問いは捨てる
-  expect(readAdvice('{"comment": ""}')).toEqual({ comment: '', questions: [] })
+  expect(readAdvice('{"comment": ""}')).toEqual({ comment: '', opinion: '', questions: [] })
   expect(readAdvice('{"comment": " ", "questions": ["A?", 1, " ", " B? "]}')).toEqual({
     comment: '',
+    opinion: '',
     questions: ['A?', 'B?'],
   })
+})
+
+test('意見を読む。無い・文字列でないなら空にする', async () => {
+  expect(readAdvice('{"comment": "", "opinion": " 先に原因を絞ると早そうです ", "questions": []}')).toEqual({
+    comment: '',
+    opinion: '先に原因を絞ると早そうです',
+    questions: [],
+  })
+  expect(readAdvice('{"comment": "あ"}')?.opinion).toBe('')
+  expect(readAdvice('{"comment": "あ", "opinion": 1}')?.opinion).toBe('')
+})
+
+test('ステータスラインの1行:ずれの一言と意見をつなぐ。両方空なら出さない', async () => {
+  expect(buildStatus({ comment: '答えきれていないかも', opinion: '案Bの方が単純です', questions: [] })).toBe(
+    'monju: 答えきれていないかも / 案Bの方が単純です',
+  )
+  expect(buildStatus({ comment: '答えきれていないかも', opinion: '', questions: [] })).toBe('monju: 答えきれていないかも')
+  expect(buildStatus({ comment: '', opinion: '案Bの方が単純です', questions: [] })).toBe('monju: 案Bの方が単純です')
+  expect(buildStatus({ comment: '', opinion: '', questions: [] })).toBe(undefined)
 })
 
 test('壊れた返事は読まない(= 何も出さない)', async () => {
