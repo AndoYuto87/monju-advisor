@@ -5,7 +5,7 @@ export const TEXT_LIMIT = 1000 // 今回の発言の先頭
 export const ANSWER_LIMIT = 800 // 今回の回答の末尾
 export const PREVIOUS_LIMIT = 400 // 前の回答の末尾
 
-// 判定の基準(D-022・D-025・D-028・D-029・C-13)。Haiku の system に渡す
+// 判定の基準(D-022・D-025・D-028・D-029・C-13・D-033・C-17・C-18)。Haiku の system に渡す
 export const RULES = `あなたは、人とコーディング支援の AI(Claude)のやり取りを横から見る第三者です。Claude の回答を読んだ人が、次にどう返すとよいかを、人の補助として一言だけ伝えます。
 
 見る観点(ずれがあれば、それを踏まえて返し方を考える):
@@ -21,10 +21,14 @@ K-1 Claude の問いに人が答えきれていない / K-2 どれを指すか�
 - 別々の作業がいくつも並んだ発言なら、K-15 を優先する
 - K-14 は、今のモードが通常モードのときだけ見る
 - advice は友達のような距離感で、言葉づかいは丁寧に。必ず100字以内にする
-- questions には、今回の回答の文の中で、人が答えないと Claude が先へ進めない問いだけを、短い要約で並べる。「ほかに作業はありますか?」のような軽い問いは入れない。無ければ空
+- questions には、今回の回答の文の中で、人が答えないと Claude が先へ進めない問いだけを並べる。「ほかに作業はありますか?」のような軽い問いは入れない。無ければ空
 - questions に入れるのは、今回の回答の文に実際に書かれている問いだけ。advice で勧める頼みごとや、あなたが考えた問いは入れない
+- no には、回答の中でその問いに付いている番号をそのまま書く(「2.」なら "2")。番号が付いていない問いは空文字にし、番号を作らない
+- 回答の問いや、問いを置いた見出しに番号が付いていれば、no は必ず書く
+- summary は、何の問いか分かるだけの短い名詞句にする。必ず15字以内
+- 「AかBか」の問いも、案を並べず、何についての問いかだけを書く(例:「CSRF の直し方」)
 
-JSON だけを返す:{"advice": "返し方", "questions": ["問いの要約"]}`
+JSON だけを返す:{"advice": "返し方", "questions": [{"no": "回答での番号", "summary": "問いの要約"}]}`
 
 // Haiku に渡す材料。フックで集める(D-004・D-008)
 export type Material = {
@@ -38,9 +42,11 @@ export type Material = {
   changedByHand: string[] // 手で変わったファイル(K-5)
 }
 
+export type Question = { no: string; summary: string }
+
 export type Advice = {
   advice: string // 次にどう返すとよいかの一言。空なら出さない(D-022・D-023)
-  questions: string[] // 答える枠にする問いの要約(D-007)
+  questions: Question[] // 答える枠にする問いの、回答での番号と要約(D-007・D-033)
 }
 
 // Haiku に渡す本文。空の材料は入れない
@@ -74,10 +80,15 @@ export function readAdvice(text: string): Advice | undefined {
   if (typeof v !== 'object' || v === null) return undefined
   const { advice, questions } = v as Record<string, unknown>
   if (typeof advice !== 'string') return undefined
-  // 文字列でない問い・空の問いは捨て、questions が無ければ空にする
-  const known = Array.isArray(questions)
-    ? questions.filter((q): q is string => typeof q === 'string' && q.trim() !== '').map(q => q.trim())
-    : []
+  // {no, summary} の形でない問い・要約が空の問いは捨て、questions が無ければ空にする(D-037)
+  // no は文字列のときだけ番号にし、整えない(D-036)
+  const known: Question[] = []
+  for (const q of Array.isArray(questions) ? questions : []) {
+    if (typeof q !== 'object' || q === null) continue
+    const { no, summary } = q as Record<string, unknown>
+    if (typeof summary !== 'string' || summary.trim() === '') continue
+    known.push({ no: typeof no === 'string' ? no.trim() : '', summary: summary.trim() })
+  }
   return { advice: advice.trim(), questions: known }
 }
 
@@ -86,9 +97,10 @@ export function buildStatus(advice: Advice): string | undefined {
   return advice.advice !== '' ? `monju: ${advice.advice}` : undefined
 }
 
-// 入力欄に足す答える枠。打ちかけの文があれば、改行してから後ろに足す(D-007・C-2・C-7)
-export function buildFrames(questions: readonly string[], draft: string): string {
+// 入力欄に足す答える枠。番号は回答のまま、無ければ要約だけ(D-033)
+// 打ちかけの文があれば、改行してから後ろに足す(D-007・C-2・C-7)
+export function buildFrames(questions: readonly Question[], draft: string): string {
   if (questions.length === 0) return ''
-  const lines = questions.map((q, i) => `${i + 1}. ${q}:`).join('\n')
+  const lines = questions.map(({ no, summary }) => (no ? `${no}. ${summary}:` : `${summary}:`)).join('\n')
   return `${draft ? '\n' : ''}${lines}`
 }

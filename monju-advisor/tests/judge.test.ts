@@ -52,21 +52,40 @@ test('ツール・編集したファイル・手で変わったファイルを�
 })
 
 test('返事の JSON から助言を読む', async () => {
-  expect(readAdvice('{"advice": "どのファイルか伝えるとよさそうです", "questions": ["どの案にする?"]}')).toEqual({
+  expect(readAdvice('{"advice": "どのファイルか伝えるとよさそうです", "questions": [{"no": "2", "summary": "使う案"}]}')).toEqual({
     advice: 'どのファイルか伝えるとよさそうです',
-    questions: ['どの案にする?'],
+    questions: [{ no: '2', summary: '使う案' }],
   })
   // ```json で囲まれていても読む
   expect(readAdvice('```json\n{"advice": "読んだか確かめるよう頼むとよさそうです", "questions": []}\n```')).toEqual({
     advice: '読んだか確かめるよう頼むとよさそうです',
     questions: [],
   })
-  // 言うことが無ければ advice は空でよい。questions が無ければ空、文字列でない・空の問いは捨てる
+  // 言うことが無ければ advice は空でよい。questions が無ければ空
   expect(readAdvice('{"advice": ""}')).toEqual({ advice: '', questions: [] })
-  expect(readAdvice('{"advice": " ", "questions": ["A?", 1, " ", " B? "]}')).toEqual({
+  expect(readAdvice('{"advice": " ", "questions": [{"no": " 1 ", "summary": " 量 "}]}')).toEqual({
     advice: '',
-    questions: ['A?', 'B?'],
+    questions: [{ no: '1', summary: '量' }],
   })
+})
+
+test('問いの no は文字列のときだけ番号にする', async () => {
+  expect(readAdvice('{"advice": "", "questions": [{"summary": "A"}, {"no": 2, "summary": "B"}, {"no": null, "summary": "C"}]}')).toEqual({
+    advice: '',
+    questions: [
+      { no: '', summary: 'A' },
+      { no: '', summary: 'B' },
+      { no: '', summary: 'C' },
+    ],
+  })
+})
+
+test('要約が空・文字列でない問いや、{no, summary} の形でない問いは捨てる', async () => {
+  expect(
+    readAdvice(
+      '{"advice": "", "questions": [{"no": "1", "summary": " "}, {"no": "2", "summary": 3}, {"no": "3"}, "ただの文字列", 1, null, {"no": "4", "summary": "量"}]}',
+    ),
+  ).toEqual({ advice: '', questions: [{ no: '4', summary: '量' }] })
 })
 
 test('ステータスラインの1行:一言があれば monju: <一言>。空なら出さない', async () => {
@@ -83,8 +102,29 @@ test('壊れた返事は読まない(= 何も出さない)', async () => {
   expect(readAdvice('null')).toBe(undefined)
 })
 
-test('答える枠:問いの数だけ並べ、打ちかけの文があれば改行してから足す', async () => {
-  expect(buildFrames(['何が食べたい?', 'がっつり派?軽め派?'], '')).toBe('1. 何が食べたい?:\n2. がっつり派?軽め派?:')
-  expect(buildFrames(['何が食べたい?'], 'あいう')).toBe('\n1. 何が食べたい?:')
+test('答える枠:回答の番号のまま並べ、番号が無ければ要約だけ', async () => {
+  expect(
+    buildFrames(
+      [
+        { no: '2', summary: '食べたいもの' },
+        { no: '4', summary: '量' },
+      ],
+      '',
+    ),
+  ).toBe('2. 食べたいもの:\n4. 量:')
+  expect(buildFrames([{ no: '', summary: '食べたいもの' }], '')).toBe('食べたいもの:')
+  expect(
+    buildFrames(
+      [
+        { no: '1', summary: '食べたいもの' },
+        { no: '', summary: '量' },
+      ],
+      '',
+    ),
+  ).toBe('1. 食べたいもの:\n量:')
+})
+
+test('答える枠:打ちかけの文があれば改行してから足す。問いが無ければ空', async () => {
+  expect(buildFrames([{ no: '2', summary: '食べたいもの' }], 'あいう')).toBe('\n2. 食べたいもの:')
   expect(buildFrames([], 'あいう')).toBe('')
 })

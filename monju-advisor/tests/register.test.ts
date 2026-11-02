@@ -218,18 +218,18 @@ test('advice が空なら、前の一言を残す', async ($, on) => {
 test('問いがあれば、入力欄に答える枠を足す。打ちかけの文は残す', async ($, on) => {
   const clock = engine(on)
   await start($)
-  reply = '{"advice": "", "questions": ["何が食べたい?", "がっつり派?軽め派?"]}'
+  reply = '{"advice": "", "questions": [{"no": "2", "summary": "食べたいもの"}, {"no": "4", "summary": "量"}]}'
   await turn($, clock, '相談', 'どうしますか?')
-  expect(filled).toEqual([{ text: '1. 何が食べたい?:\n2. がっつり派?軽め派?:', mode: 'append' }])
+  expect(filled).toEqual([{ text: '2. 食べたいもの:\n4. 量:', mode: 'append' }])
   draft = 'あいう'
   await turn($, clock, '相談', 'どうしますか?')
-  expect(filled[1]).toEqual({ text: '\n1. 何が食べたい?:\n2. がっつり派?軽め派?:', mode: 'append' })
+  expect(filled[1]).toEqual({ text: '\n2. 食べたいもの:\n4. 量:', mode: 'append' })
 })
 
 test('返事より先に次の発言が送られていたら、一言は出すが、枠は入れない', async ($, on) => {
   const clock = engine(on)
   await start($)
-  reply = '{"advice": "どれにするか答えるとよさそうです", "questions": ["どれにする?"]}'
+  reply = '{"advice": "どれにするか答えるとよさそうです", "questions": [{"no": "1", "summary": "使う案"}]}'
   delayMs = 3000
   await submit($, '相談')
   await begin($, '相談')
