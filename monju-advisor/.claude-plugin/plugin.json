@@ -1,1 +1,1 @@
-{ "name": "monju-advisor", "version": "0.3.0", "description": "回答が終わるたびに Haiku が第三者の目でやり取りを読み、人が次にどう返すとよいか(前提のずれや書き方も踏まえて)をステータスラインに出し、問いには入力欄に答える枠を足す", "author": { "name": "AndoYuto87" }, "license": "MIT" }
+{ "name": "monju-advisor", "version": "0.4.0", "description": "回答が終わるたびに Haiku が第三者の目でやり取りを読み、人が次にどう返すとよいか(前提のずれや書き方も踏まえて)をステータスラインに出し、問いには入力欄に答える枠を足す", "author": { "name": "AndoYuto87" }, "license": "MIT" }
