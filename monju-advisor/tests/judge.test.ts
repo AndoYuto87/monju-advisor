@@ -1,130 +1,90 @@
 import { expect, test } from 'claude-code/testing'
 import {
-  ANSWER_LIMIT,
-  buildFrames,
+  buildFill,
   buildPrompt,
-  buildStatus,
-  type Material,
-  PREVIOUS_LIMIT,
-  readAdvice,
-  TEXT_LIMIT,
+  type Message,
+  RECENT_TURNS,
+  TOOL_INPUT_LIMIT,
+  TOOL_RESULT_LIMIT,
+  USER_TEXT_LIMIT,
 } from '../hooks/judge'
 
-const empty: Material = { text: 'テスト', answer: '', turns: 1, isPlan: false, tools: {}, edited: {}, changedByHand: [] }
+const user = (text: string): Message => ({ role: 'user', text, toolUses: [] })
+const claude = (text: string, toolUses: Message['toolUses'] = []): Message => ({ role: 'assistant', text, toolUses })
 
-test('発言は先頭を、回答と前の回答は末尾を残す', async () => {
-  const prompt = buildPrompt({
-    ...empty,
-    text: 'あ'.repeat(TEXT_LIMIT) + 'い',
-    answer: 'う' + 'え'.repeat(ANSWER_LIMIT),
-    previous: 'お' + 'か'.repeat(PREVIOUS_LIMIT),
-  })
-  expect(prompt.includes('い')).toBe(false)
-  expect(prompt.includes('う')).toBe(false)
-  expect(prompt.includes('お')).toBe(false)
-  expect(prompt.includes('あ'.repeat(TEXT_LIMIT))).toBe(true)
-  expect(prompt.includes('え'.repeat(ANSWER_LIMIT))).toBe(true)
-  expect(prompt.includes('か'.repeat(PREVIOUS_LIMIT))).toBe(true)
+// 人と Claude の往復を n 個作る
+const turns = (n: number): Message[] => Array.from({ length: n }, (_, i) => [user(`発言${i + 1}`), claude(`回答${i + 1}`)]).flat()
+
+const split = (prompt: string) => {
+  const [before, recent] = prompt.split(`# 直近 ${RECENT_TURNS} 往復`)
+  return { before, recent }
+}
+
+test('直近3往復より前は人の発言だけ、直近は Claude の回答まで', async () => {
+  const { before, recent } = split(buildPrompt(turns(5), ''))
+  expect(before.includes('[人] 発言1\n[人] 発言2')).toBe(true)
+  expect(before.includes('回答')).toBe(false)
+  expect(before.includes('発言3')).toBe(false)
+  expect(recent.includes('[人] 発言3\n[Claude] 回答3\n[人] 発言4\n[Claude] 回答4\n[人] 発言5\n[Claude] 回答5')).toBe(true)
+  expect(recent.includes('発言2')).toBe(false)
 })
 
-test('空の材料は入れない', async () => {
-  const prompt = buildPrompt({ ...empty, previous: '' })
-  expect(prompt.includes('<今回の発言>\nテスト\n</今回の発言>')).toBe(true)
-  expect(prompt.includes('<往復の数>1</往復の数>')).toBe(true)
-  expect(prompt.includes('<今のモード>通常モード</今のモード>')).toBe(true)
-  for (const name of ['前の回答', '今回の回答', 'ツール', '編集したファイル', '手で変わった']) {
-    expect(prompt.includes(name)).toBe(false)
+test('直近より前の人の発言は2000字で切り、直近は Claude も人も全文', async () => {
+  const long = 'あ'.repeat(USER_TEXT_LIMIT) + 'い'
+  const messages = [user(long), claude('前の回答'), ...turns(2), user('う'.repeat(3000)), claude('え'.repeat(3000))]
+  const { before, recent } = split(buildPrompt(messages, ''))
+  expect(before.includes(`[人] ${'あ'.repeat(USER_TEXT_LIMIT)}\n`)).toBe(true)
+  expect(before.includes('い')).toBe(false)
+  expect(recent.includes('う'.repeat(3000))).toBe(true)
+  expect(recent.includes('え'.repeat(3000))).toBe(true)
+})
+
+test('道具の入力は150字、結果は200字で切る', async () => {
+  const input = { command: 'か'.repeat(300) }
+  const messages = [user('見て'), claude('読みます', [{ tool: 'Bash', input, text: 'き'.repeat(TOOL_RESULT_LIMIT) + 'ぬ' }])]
+  const prompt = buildPrompt(messages, '')
+  const json = JSON.stringify(input).slice(0, TOOL_INPUT_LIMIT)
+  expect(prompt.includes(`[Claude] 読みます\n[道具] Bash ${json}\n[結果] ${'き'.repeat(TOOL_RESULT_LIMIT)}`)).toBe(true)
+  expect(prompt.includes(JSON.stringify(input).slice(0, TOOL_INPUT_LIMIT + 1))).toBe(false)
+  expect(prompt.includes('ぬ')).toBe(false)
+  // 結果がまだ無い道具は、入力だけ
+  const pending = buildPrompt([user('見て'), claude('', [{ tool: 'Read', input: { file_path: '/a.ts' } }])], '')
+  expect(pending.includes('[道具] Read {"file_path":"/a.ts"}')).toBe(true)
+  expect(pending.includes('[結果]')).toBe(false)
+  expect(pending.includes('[Claude]')).toBe(false)
+})
+
+test('仕組みが足す発言は捨て、往復にも数えない', async () => {
+  const messages = [
+    user('発言1'),
+    claude('回答1'),
+    user('<system-reminder>思い出し</system-reminder>'),
+    user('<ide_selection>選んだ所</ide_selection>'),
+    user('Base directory for this skill: /x'),
+    user('前置き SYSTEM NOTIFICATION 通知'),
+    user(''), // 道具の結果だけの発言
+    ...turns(3).map(m => ({ ...m, text: m.text.replace(/\d/, n => `${Number(n) + 1}`) })),
+  ]
+  const { before, recent } = split(buildPrompt(messages, ''))
+  expect(before.includes('[人] 発言1')).toBe(true)
+  expect(recent.includes('[人] 発言2\n[Claude] 回答2')).toBe(true)
+  for (const word of ['思い出し', '選んだ所', 'Base directory', 'SYSTEM NOTIFICATION']) {
+    expect(before.includes(word) || recent.includes(word)).toBe(false)
   }
 })
 
-test('ツール・編集したファイル・手で変わったファイルを並べる', async () => {
-  const prompt = buildPrompt({
-    ...empty,
-    isPlan: true,
-    tools: { Edit: 2, Bash: 1 },
-    edited: { '/a.ts': 3 },
-    changedByHand: ['/a.ts', '/b.ts'],
-  })
-  expect(prompt.includes('<今のモード>プランモード</今のモード>')).toBe(true)
-  expect(prompt.includes('Edit: 2回\nBash: 1回')).toBe(true)
-  expect(prompt.includes('/a.ts: 3回')).toBe(true)
-  expect(prompt.includes('/a.ts\n/b.ts')).toBe(true)
+test('往復が3つ未満なら全部が直近', async () => {
+  const { before, recent } = split(buildPrompt(turns(2), ''))
+  expect(before).toBe('# 人の発言(初めから全部)\n\n')
+  expect(recent.includes('[人] 発言1\n[Claude] 回答1\n[人] 発言2\n[Claude] 回答2')).toBe(true)
 })
 
-test('返事の JSON から助言を読む', async () => {
-  expect(readAdvice('{"advice": "どのファイルか伝えるとよさそうです", "questions": [{"no": "2", "summary": "使う案"}]}')).toEqual({
-    advice: 'どのファイルか伝えるとよさそうです',
-    questions: [{ no: '2', summary: '使う案' }],
-  })
-  // ```json で囲まれていても読む
-  expect(readAdvice('```json\n{"advice": "読んだか確かめるよう頼むとよさそうです", "questions": []}\n```')).toEqual({
-    advice: '読んだか確かめるよう頼むとよさそうです',
-    questions: [],
-  })
-  // 言うことが無ければ advice は空でよい。questions が無ければ空
-  expect(readAdvice('{"advice": ""}')).toEqual({ advice: '', questions: [] })
-  expect(readAdvice('{"advice": " ", "questions": [{"no": " 1 ", "summary": " 量 "}]}')).toEqual({
-    advice: '',
-    questions: [{ no: '1', summary: '量' }],
-  })
+test('打ちかけの文があれば最後に足し、無ければ足さない', async () => {
+  expect(buildPrompt(turns(1), 'b にしようかな').endsWith('\n\n# 入力欄の打ちかけ\nb にしようかな')).toBe(true)
+  expect(buildPrompt(turns(1), '').includes('入力欄の打ちかけ')).toBe(false)
 })
 
-test('問いの no は文字列のときだけ番号にする', async () => {
-  expect(readAdvice('{"advice": "", "questions": [{"summary": "A"}, {"no": 2, "summary": "B"}, {"no": null, "summary": "C"}]}')).toEqual({
-    advice: '',
-    questions: [
-      { no: '', summary: 'A' },
-      { no: '', summary: 'B' },
-      { no: '', summary: 'C' },
-    ],
-  })
-})
-
-test('要約が空・文字列でない問いや、{no, summary} の形でない問いは捨てる', async () => {
-  expect(
-    readAdvice(
-      '{"advice": "", "questions": [{"no": "1", "summary": " "}, {"no": "2", "summary": 3}, {"no": "3"}, "ただの文字列", 1, null, {"no": "4", "summary": "量"}]}',
-    ),
-  ).toEqual({ advice: '', questions: [{ no: '4', summary: '量' }] })
-})
-
-test('ステータスラインの1行:一言があれば monju: <一言>。空なら出さない', async () => {
-  expect(buildStatus({ advice: 'どのファイルか伝えるとよさそうです', questions: [] })).toBe('monju: どのファイルか伝えるとよさそうです')
-  expect(buildStatus({ advice: '', questions: [] })).toBe(undefined)
-})
-
-test('壊れた返事は読まない(= 何も出さない)', async () => {
-  expect(readAdvice('')).toBe(undefined)
-  expect(readAdvice('advice')).toBe(undefined)
-  expect(readAdvice('{"advice": "あ", "questions": [')).toBe(undefined)
-  expect(readAdvice('{"questions": []}')).toBe(undefined)
-  expect(readAdvice('{"advice": 1}')).toBe(undefined)
-  expect(readAdvice('null')).toBe(undefined)
-})
-
-test('答える枠:回答の番号のまま並べ、番号が無ければ要約だけ', async () => {
-  expect(
-    buildFrames(
-      [
-        { no: '2', summary: '食べたいもの' },
-        { no: '4', summary: '量' },
-      ],
-      '',
-    ),
-  ).toBe('2. 食べたいもの:\n4. 量:')
-  expect(buildFrames([{ no: '', summary: '食べたいもの' }], '')).toBe('食べたいもの:')
-  expect(
-    buildFrames(
-      [
-        { no: '1', summary: '食べたいもの' },
-        { no: '', summary: '量' },
-      ],
-      '',
-    ),
-  ).toBe('1. 食べたいもの:\n量:')
-})
-
-test('答える枠:打ちかけの文があれば改行してから足す。問いが無ければ空', async () => {
-  expect(buildFrames([{ no: '2', summary: '食べたいもの' }], 'あいう')).toBe('\n2. 食べたいもの:')
-  expect(buildFrames([], 'あいう')).toBe('')
+test('下書きは trim し、打ちかけがあれば改行してから足す', async () => {
+  expect(buildFill('  a にします\n(別視点:…)\n', '')).toBe('a にします\n(別視点:…)')
+  expect(buildFill('a にします', 'えっと')).toBe('\na にします')
 })

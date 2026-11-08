@@ -1,5 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
-import { buildFrames, buildPrompt, buildStatus, type Material, readAdvice, RULES } from './judge'
+import { buildFrames, buildPrompt, buildStatus, type Material, readAdvice, RULES } from './old-judge'
 
 const COMMAND = 'monju-advisor'
 
