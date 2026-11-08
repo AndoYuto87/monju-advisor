@@ -1,1 +1,1 @@
-{ "name": "monju-advisor", "version": "0.5.0", "description": "monju ボタンを押したときだけ、第三者の目で反対意見を探し、人がそのまま送れる返事の下書きを入力欄に足す", "author": { "name": "AndoYuto87" }, "license": "MIT" }
+{ "name": "monju-advisor", "version": "0.6.0", "description": "monju ボタンを押したときだけ、第三者の目で反対意見を探し、人がそのまま送れる返事の下書きを入力欄に足す", "author": { "name": "AndoYuto87" }, "license": "MIT" }
